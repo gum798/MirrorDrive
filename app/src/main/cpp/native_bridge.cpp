@@ -27,7 +27,7 @@ Java_com_example_mirrordrive_NativeBridge_nativeInit(JNIEnv *env, jobject, jstri
     env->ReleaseStringUTFChars(filesDir, dir);
 
     // Fixed synthetic device id (stable MAC-format string), consistent with HW below.
-    std::strcpy(g_ctx.device_id, "48:5D:60:7C:EE:22");
+    std::strcpy(g_ctx.device_id, "48:5d:60:7c:ee:22");
 
     raop_callbacks_t cbs; std::memset(&cbs, 0, sizeof(cbs));
     cbs.conn_init = cb_conn_init; cbs.conn_destroy = cb_conn_destroy;

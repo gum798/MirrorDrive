@@ -17,6 +17,8 @@ struct dnssd_s {
     unsigned char raop_txt[512];    int raop_txt_len;
 };
 
+// Appends one DNS-SD TXT record (1 length byte + kv). Invariant: caller-supplied
+// buf is 512 bytes; the fixed key set built in build_txt stays well under 512.
 static void txt_add(unsigned char *buf, int *len, const char *kv) {
     int n = (int)strlen(kv);
     buf[(*len)++] = (unsigned char)n;
@@ -26,7 +28,7 @@ static void txt_add(unsigned char *buf, int *len, const char *kv) {
 
 static void build_txt(dnssd_t *d) {
     char devid[18];
-    snprintf(devid, sizeof(devid), "%02X:%02X:%02X:%02X:%02X:%02X",
+    snprintf(devid, sizeof(devid), "%02x:%02x:%02x:%02x:%02x:%02x",
              d->hw_addr[0],d->hw_addr[1],d->hw_addr[2],d->hw_addr[3],d->hw_addr[4],d->hw_addr[5]);
     char kv[128];
     d->airplay_txt_len = 0;
