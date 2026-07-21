@@ -1,0 +1,10 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+# Cross-compile output: whole per-ABI trees are generated (lib/, include/, plus
+# OpenSSL's bin/ and share/). Ignore every per-ABI subdir; keep only the .gitkeep.
+app/src/main/cpp/prebuilt/*/
+!app/src/main/cpp/prebuilt/.gitkeep
+app/src/main/cpp/uxplay/
