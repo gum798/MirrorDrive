@@ -60,8 +60,11 @@ Java_com_example_mirrordrive_NativeBridge_nativeInit(JNIEnv *env, jobject, jstri
     unsigned short port = 0;
     // UxPlay httpd_start returns 1 on SUCCESS (0 = already running, -1 = socket error) — not 0.
     if (raop_start_httpd(g_ctx.raop, &port) != 1) { LOGE("raop_start_httpd failed"); return JNI_FALSE; }
+    // raop_start_httpd writes the bound port into `port` but does NOT store it in raop.
+    // Set it so raop_get_port() and the advertised SRV record report the real port, not 0.
+    raop_set_port(g_ctx.raop, port);
+    g_ctx.port = port;
     LOGI("httpd started, port=%d", port);
-    g_ctx.port = raop_get_port(g_ctx.raop);
 
     // Extract Ed25519 public key hex for the TXT pk (accessor added to raop.c, Step 6).
     unsigned char pub[32];
