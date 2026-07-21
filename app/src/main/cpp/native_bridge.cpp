@@ -8,6 +8,27 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "MirrorDrive", __VA_ARGS__)
 
 MirrorContext g_ctx;
+JavaVM *g_vm = nullptr;
+VideoSink g_video;
+
+// Cache the JavaVM so cb_video_process (which runs on a native RTP-mirror thread) can
+// attach to the JVM and deliver access units to the Kotlin VideoRenderer.
+JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void * /*reserved*/) {
+    g_vm = vm;
+    return JNI_VERSION_1_6;
+}
+
+// Store a global ref to the VideoRenderer and cache its onAccessUnit method id.
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_mirrordrive_NativeBridge_setVideoSink(JNIEnv *env, jobject, jobject sink) {
+    if (g_video.obj) env->DeleteGlobalRef(g_video.obj);
+    g_video.obj = env->NewGlobalRef(sink);
+    jclass cls = env->GetObjectClass(sink);
+    // void onAccessUnit(byte[] data, long ptsUs, boolean isConfig)
+    g_video.onAu = env->GetMethodID(cls, "onAccessUnit", "([BJZ)V");
+    if (!g_video.onAu) LOGE("setVideoSink: onAccessUnit method not found");
+    else LOGI("setVideoSink: video sink registered");
+}
 
 // Route UxPlay's internal logger to logcat so init failures are visible.
 static void raop_log_cb(void *cls, int level, const char *msg) {
@@ -28,7 +49,39 @@ static void cb_conn_destroy(void*) {}
 static void cb_conn_reset(void*, int) {}
 static void cb_conn_teardown(void*, bool*, bool*) {}
 static void cb_conn_feedback(void*) {}
-static void cb_video_process(void*, raop_ntp_t*, video_decode_struct*) {}
+// Real video bridge: hand each decoded Annex-B access unit to the Kotlin VideoRenderer.
+// Runs on a native RTP-mirror thread (NOT a JVM thread), so it must attach to the JVM.
+static void cb_video_process(void*, raop_ntp_t*, video_decode_struct *d) {
+    if (!d || !d->data || d->data_len <= 0) return;
+
+    // Debug: confirm frames arrive on the physical device (throttled to avoid log spam).
+    static uint32_t frame_count = 0;
+    if ((frame_count++ % 30) == 0) {
+        LOGI("video frame: %d bytes, nal=%d, h265=%d", d->data_len, d->nal_count, d->is_h265);
+    }
+
+    if (d->is_h265) return;                       // H.264 only; H.265 is out of scope.
+    if (!g_vm || !g_video.obj || !g_video.onAu) return;
+
+    JNIEnv *env = nullptr;
+    bool attached = false;
+    if (g_vm->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+        if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+        attached = true;
+    }
+
+    jbyteArray arr = env->NewByteArray(d->data_len);
+    if (arr) {
+        env->SetByteArrayRegion(arr, 0, d->data_len, (const jbyte*)d->data);
+        // ntp_time_remote is already in nanoseconds here; convert to microseconds.
+        jlong ptsUs = (jlong)(d->ntp_time_remote / 1000ULL);
+        // isConfig=false: VideoRenderer self-detects SPS/PPS from the Annex-B stream.
+        env->CallVoidMethod(g_video.obj, g_video.onAu, arr, ptsUs, JNI_FALSE);
+        env->DeleteLocalRef(arr);
+    }
+
+    if (attached) g_vm->DetachCurrentThread();
+}
 static void cb_audio_process(void*, raop_ntp_t*, audio_decode_struct*) {}
 static void cb_video_pause(void*) {}
 static void cb_video_resume(void*) {}
