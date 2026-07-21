@@ -35,7 +35,7 @@ static void build_txt(dnssd_t *d) {
     snprintf(kv,sizeof(kv),"deviceid=%s",devid);                    txt_add(d->airplay_txt,&d->airplay_txt_len,kv);
     snprintf(kv,sizeof(kv),"features=%s,%s",FEATURES_1,FEATURES_2); txt_add(d->airplay_txt,&d->airplay_txt_len,kv);
     txt_add(d->airplay_txt,&d->airplay_txt_len,"pw=false");
-    snprintf(kv,sizeof(kv),"flags=%s",AIRPLAY_FLAGS);               txt_add(d->airplay_txt,&d->airplay_txt_len,kv);
+    txt_add(d->airplay_txt,&d->airplay_txt_len,"flags=0x4"); /* 0x4 = no-PIN pairing; 0x84's bit7 triggers iOS PIN pairing */
     txt_add(d->airplay_txt,&d->airplay_txt_len,"model=AppleTV3,2");
     snprintf(kv,sizeof(kv),"pk=%s",d->pk_str);                      txt_add(d->airplay_txt,&d->airplay_txt_len,kv);
     snprintf(kv,sizeof(kv),"pi=%s",AIRPLAY_PI);                     txt_add(d->airplay_txt,&d->airplay_txt_len,kv);

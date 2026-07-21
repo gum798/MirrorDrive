@@ -20,15 +20,44 @@ Java_com_example_mirrordrive_NativeBridge_nativeVersion(JNIEnv *env, jobject /*t
     return env->NewStringUTF("mirrordrive-native-0.1");
 }
 
-// Minimal callbacks — real A/V wiring lands in Task 3/4. Stubs so raop_init succeeds.
+// ALL raop_callbacks_s fields must be non-NULL — UxPlay calls them without NULL checks,
+// so any unset pointer crashes (SIGSEGV, PC=0) during connection setup. Real A/V wiring
+// (video_process/audio_process/audio_get_format) lands in Task 3/4; the rest are stubs.
 static void cb_conn_init(void*) {}
 static void cb_conn_destroy(void*) {}
 static void cb_conn_reset(void*, int) {}
+static void cb_conn_teardown(void*, bool*, bool*) {}
+static void cb_conn_feedback(void*) {}
 static void cb_video_process(void*, raop_ntp_t*, video_decode_struct*) {}
 static void cb_audio_process(void*, raop_ntp_t*, audio_decode_struct*) {}
+static void cb_video_pause(void*) {}
+static void cb_video_resume(void*) {}
+static void cb_video_flush(void*) {}
+static void cb_audio_flush(void*) {}
+static void cb_video_reset(void*, reset_type_t) {}
+static double cb_audio_set_client_volume(void*) { return 0.0; }
+static void cb_audio_set_volume(void*, float) {}
+static void cb_audio_set_metadata(void*, const void*, int) {}
+static void cb_audio_set_coverart(void*, const void*, int) {}
+static void cb_audio_stop_coverart_rendering(void*) {}
+static void cb_audio_remote_control_id(void*, const char*, const char*) {}
+static void cb_audio_set_progress(void*, uint32_t*, uint32_t*, uint32_t*) {}
 static void cb_audio_get_format(void*, unsigned char*, unsigned short*, bool*, bool*, uint64_t*) {}
 static void cb_video_report_size(void*, float*, float*, float*, float*) {}
+static void cb_mirror_video_running(void*, bool) {}
+static void cb_report_client_request(void*, char*, char*, char*, bool *admit) { if (admit) *admit = true; }
+static void cb_display_pin(void*, char*) {}
+static void cb_register_client(void*, const char*, const char*, const char*) {}
+static bool cb_check_register(void*, const char*) { return false; }
+static const char* cb_passwd(void*, int *len) { if (len) *len = 0; return nullptr; }
+static void cb_export_dacp(void*, const char*, const char*) {}
 static int  cb_video_set_codec(void*, video_codec_t) { return 0; }
+static void cb_on_video_play(void*, const char*, float) {}
+static void cb_on_video_scrub(void*, float) {}
+static void cb_on_video_rate(void*, float) {}
+static void cb_on_video_stop(void*) {}
+static void cb_on_video_acquire_playback_info(void*, playback_info_t*) {}
+static float cb_on_video_playlist_remove(void*) { return 0.0f; }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_mirrordrive_NativeBridge_nativeInit(JNIEnv *env, jobject, jstring filesDir) {
@@ -40,12 +69,41 @@ Java_com_example_mirrordrive_NativeBridge_nativeInit(JNIEnv *env, jobject, jstri
     std::strcpy(g_ctx.device_id, "48:5d:60:7c:ee:22");
 
     raop_callbacks_t cbs; std::memset(&cbs, 0, sizeof(cbs));
-    cbs.conn_init = cb_conn_init; cbs.conn_destroy = cb_conn_destroy;
+    cbs.audio_process = cb_audio_process;
+    cbs.video_process = cb_video_process;
+    cbs.video_pause = cb_video_pause;
+    cbs.video_resume = cb_video_resume;
+    cbs.conn_feedback = cb_conn_feedback;
     cbs.conn_reset = cb_conn_reset;
-    cbs.video_process = cb_video_process; cbs.audio_process = cb_audio_process;
+    cbs.video_reset = cb_video_reset;
+    cbs.conn_init = cb_conn_init;
+    cbs.conn_destroy = cb_conn_destroy;
+    cbs.conn_teardown = cb_conn_teardown;
+    cbs.audio_flush = cb_audio_flush;
+    cbs.video_flush = cb_video_flush;
+    cbs.audio_set_client_volume = cb_audio_set_client_volume;
+    cbs.audio_set_volume = cb_audio_set_volume;
+    cbs.audio_set_metadata = cb_audio_set_metadata;
+    cbs.audio_set_coverart = cb_audio_set_coverart;
+    cbs.audio_stop_coverart_rendering = cb_audio_stop_coverart_rendering;
+    cbs.audio_remote_control_id = cb_audio_remote_control_id;
+    cbs.audio_set_progress = cb_audio_set_progress;
     cbs.audio_get_format = cb_audio_get_format;
     cbs.video_report_size = cb_video_report_size;
+    cbs.mirror_video_running = cb_mirror_video_running;
+    cbs.report_client_request = cb_report_client_request;
+    cbs.display_pin = cb_display_pin;
+    cbs.register_client = cb_register_client;
+    cbs.check_register = cb_check_register;
+    cbs.passwd = cb_passwd;
+    cbs.export_dacp = cb_export_dacp;
     cbs.video_set_codec = cb_video_set_codec;
+    cbs.on_video_play = cb_on_video_play;
+    cbs.on_video_scrub = cb_on_video_scrub;
+    cbs.on_video_rate = cb_on_video_rate;
+    cbs.on_video_stop = cb_on_video_stop;
+    cbs.on_video_acquire_playback_info = cb_on_video_acquire_playback_info;
+    cbs.on_video_playlist_remove = cb_on_video_playlist_remove;
 
     g_ctx.raop = raop_init(&cbs);
     if (!g_ctx.raop) { LOGE("raop_init returned NULL"); return JNI_FALSE; }

@@ -11,7 +11,7 @@ fun airplayTxt(deviceId: String, pkHex: String): Map<String, String> = linkedMap
     "deviceid" to deviceId,                 // lowercase colon MAC
     "features" to "0x5A7FFEE6,0x0",
     "pw" to "false",
-    "flags" to "0x84",
+    "flags" to "0x4",
     "model" to "AppleTV3,2",
     "pk" to pkHex,
     "pi" to "2e388006-13ba-4041-9a67-25dd4a43d536",

@@ -9,7 +9,7 @@ class AirplayTxtTest {
     @Test fun airplayTxt_hasExactIdentityValues() {
         val txt = airplayTxt(deviceId = "aa:bb:cc:dd:ee:ff", pkHex = pk)
         assertEquals("0x5A7FFEE6,0x0", txt["features"])
-        assertEquals("0x84", txt["flags"])
+        assertEquals("0x4", txt["flags"])
         assertEquals("AppleTV3,2", txt["model"])
         assertEquals("220.68", txt["srcvers"])
         assertEquals("2e388006-13ba-4041-9a67-25dd4a43d536", txt["pi"])
