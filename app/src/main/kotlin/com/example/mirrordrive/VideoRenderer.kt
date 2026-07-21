@@ -20,7 +20,13 @@ import java.util.ArrayDeque
  * stream), so they are accumulated until both are known, then the codec is configured
  * lazily. Only H.264 is supported; H.265 AUs are dropped by the caller.
  */
-class VideoRenderer(private val onFrameRendered: () -> Unit = {}) {
+class VideoRenderer(
+    private val onFrameRendered: () -> Unit = {},
+    // Reports the real decoded video size (honouring any crop rect) once the decoder has
+    // produced an output format. Used to letterbox the fullscreen view and size the
+    // floating overlay to the source aspect ratio. Delivered on the codec thread.
+    private val onVideoSize: (w: Int, h: Int) -> Unit = { _, _ -> },
+) {
     private data class Au(val data: ByteArray, val ptsUs: Long)
 
     private val lock = Any()
@@ -35,7 +41,29 @@ class VideoRenderer(private val onFrameRendered: () -> Unit = {}) {
     private var sps: ByteArray? = null
     private var pps: ByteArray? = null
 
-    fun onSurface(s: Surface) { synchronized(lock) { surface = s } }
+    fun onSurface(s: Surface) = setSurface(s)
+
+    /**
+     * Point the decoder at [s]. Before the codec is configured this just records the target
+     * Surface for the pending [configure]. Once the codec is running it swaps the output
+     * Surface in place via [MediaCodec.setOutputSurface] (API 23+) WITHOUT reconfiguring, so
+     * a fullscreen <-> floating-overlay mode switch never tears the codec down and drops the
+     * live AirPlay session — the same decoder simply renders into the new Surface.
+     */
+    fun setSurface(s: Surface) {
+        synchronized(lock) {
+            if (released) return
+            surface = s
+            val c = codec
+            if (configured && c != null) {
+                try {
+                    c.setOutputSurface(s)
+                } catch (e: IllegalStateException) {
+                    Log.w("MirrorDrive", "setOutputSurface failed: ${e.message}")
+                }
+            }
+        }
+    }
 
     fun onAccessUnit(data: ByteArray, ptsUs: Long, isConfig: Boolean) {
         synchronized(lock) {
@@ -114,8 +142,9 @@ class VideoRenderer(private val onFrameRendered: () -> Unit = {}) {
                 onFrameRendered()
             }
             override fun onOutputFormatChanged(mc: MediaCodec, f: MediaFormat) {
-                Log.i("MirrorDrive", "video output format: ${f.getInteger(MediaFormat.KEY_WIDTH)}" +
-                        "x${f.getInteger(MediaFormat.KEY_HEIGHT)}")
+                val (w, h) = decodedVideoSize(f)
+                Log.i("MirrorDrive", "video output format: ${w}x$h")
+                onVideoSize(w, h)
             }
             override fun onError(mc: MediaCodec, e: MediaCodec.CodecException) {
                 Log.e("MirrorDrive", "MediaCodec error code=${e.errorCode} diag=${e.diagnosticInfo}", e)
@@ -157,6 +186,21 @@ class VideoRenderer(private val onFrameRendered: () -> Unit = {}) {
             pps = null
         }
     }
+}
+
+/**
+ * The real displayed video size from a decoder output [MediaFormat]. KEY_WIDTH/KEY_HEIGHT can
+ * include hardware alignment padding, so prefer the crop rectangle when the format advertises
+ * one (real width = crop-right - crop-left + 1, height likewise). Falls back to KEY_WIDTH/HEIGHT.
+ */
+private fun decodedVideoSize(f: MediaFormat): Pair<Int, Int> {
+    if (f.containsKey("crop-left") && f.containsKey("crop-right") &&
+        f.containsKey("crop-top") && f.containsKey("crop-bottom")) {
+        val w = f.getInteger("crop-right") - f.getInteger("crop-left") + 1
+        val h = f.getInteger("crop-bottom") - f.getInteger("crop-top") + 1
+        if (w > 0 && h > 0) return w to h
+    }
+    return f.getInteger(MediaFormat.KEY_WIDTH) to f.getInteger(MediaFormat.KEY_HEIGHT)
 }
 
 /** True if the Annex-B buffer contains at least one VCL slice NAL (types 1-5). */
