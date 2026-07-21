@@ -2,8 +2,18 @@
 #include <string>
 #include "native_bridge.h"
 #include <cstring>
+#include <android/log.h>
+
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  "MirrorDrive", __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "MirrorDrive", __VA_ARGS__)
 
 MirrorContext g_ctx;
+
+// Route UxPlay's internal logger to logcat so init failures are visible.
+static void raop_log_cb(void *cls, int level, const char *msg) {
+    (void)cls;
+    __android_log_print(ANDROID_LOG_INFO, "MirrorDrive-raop", "[%d] %s", level, msg);
+}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_mirrordrive_NativeBridge_nativeVersion(JNIEnv *env, jobject /*thiz*/) {
@@ -38,12 +48,19 @@ Java_com_example_mirrordrive_NativeBridge_nativeInit(JNIEnv *env, jobject, jstri
     cbs.video_set_codec = cb_video_set_codec;
 
     g_ctx.raop = raop_init(&cbs);
-    if (!g_ctx.raop) return JNI_FALSE;
+    if (!g_ctx.raop) { LOGE("raop_init returned NULL"); return JNI_FALSE; }
+    raop_set_log_callback(g_ctx.raop, raop_log_cb, nullptr);
+    raop_set_log_level(g_ctx.raop, 8 /*LOGGER_DEBUG_DATA*/);
+    LOGI("raop_init OK; keyfile=%s device_id=%s", keyfile.c_str(), g_ctx.device_id);
+
     int err = raop_init2(g_ctx.raop, 1 /*nohold*/, g_ctx.device_id, keyfile.c_str());
-    if (err) return JNI_FALSE;
+    if (err) { LOGE("raop_init2 failed, err=%d", err); return JNI_FALSE; }
+    LOGI("raop_init2 OK; starting httpd");
 
     unsigned short port = 0;
-    if (raop_start_httpd(g_ctx.raop, &port)) return JNI_FALSE;
+    // UxPlay httpd_start returns 1 on SUCCESS (0 = already running, -1 = socket error) — not 0.
+    if (raop_start_httpd(g_ctx.raop, &port) != 1) { LOGE("raop_start_httpd failed"); return JNI_FALSE; }
+    LOGI("httpd started, port=%d", port);
     g_ctx.port = raop_get_port(g_ctx.raop);
 
     // Extract Ed25519 public key hex for the TXT pk (accessor added to raop.c, Step 6).
