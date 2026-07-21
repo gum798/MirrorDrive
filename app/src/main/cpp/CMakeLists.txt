@@ -29,7 +29,7 @@ list(FILTER UX_SRC EXCLUDE REGEX "dnssd\\.c$")
 
 add_library(mirrordrive SHARED
     native_bridge.cpp
-    dnssd_shim.c
+    dnssd_min.c
     ${UX_SRC} ${LLHTTP_SRC} ${PLAYFAIR_SRC})
 
 target_include_directories(mirrordrive PRIVATE ${UX} ${UX}/llhttp ${UX}/playfair)
@@ -48,9 +48,11 @@ target_compile_definitions(mirrordrive PRIVATE
 # MirrorDrive: --gc-sections alone (spike 3a) could NOT resolve the excluded dnssd.c
 # symbols: the accessors (dnssd_get_name/hw_addr/*_txt/features, dnssd_set_pk) are
 # reachable from the retained AirPlay request handlers, so they are GC roots, not dead
-# code. dnssd_shim.c (spike 3b, added to the sources above) provides the no-op stubs
-# that actually resolve the link. These section flags are kept as a harmless size
-# optimization (they let the linker drop any genuinely unused code paths).
+# code. dnssd_min.c (added to the sources above) provides a REAL implementation that
+# builds the AirPlay/RAOP TXT records in DNS-SD wire format so the native httpd GET /info
+# handler returns correct features/TXT/name/hw_addr (advertisement itself is still done in
+# Kotlin/jmDNS; dnssd_register_* are no-ops). These section flags are kept as a harmless
+# size optimization (they let the linker drop any genuinely unused code paths).
 target_compile_options(mirrordrive PRIVATE -ffunction-sections -fdata-sections)
 target_link_options(mirrordrive PRIVATE -Wl,--gc-sections)
 
