@@ -9,6 +9,64 @@ MirrorDrive is a **view-only receiver**: the iPhone mirrors its whole screen to
 the app over Wi-Fi (or a shared hotspot), and the app decodes and renders it.
 There is no touch-back channel — you control everything from the iPhone.
 
+## 📥 다운로드 / Download
+
+**→ [최신 APK 다운로드 (Latest Release)](https://github.com/gum798/MirrorDrive/releases/latest)**
+
+안드로이드 기기에서 위 링크를 열어 APK를 받고 사이드로드로 설치하세요 (설치 방법은 릴리스 페이지에 있습니다).
+Open the link on your Android device, download the APK, and sideload it — install steps are on the release page.
+
+---
+
+## 한국어 안내 (For Korean users)
+
+개발자가 아니어도 괜찮아요. 아래만 따라 하면 됩니다.
+
+### 이게 뭐예요?
+
+**MirrorDrive**는 **아이폰 화면을 이 안드로이드 기기에 무선으로 띄워주는 앱**이에요.
+태블릿, 차량용 화면(카플레이형 AI 박스) 등에서 아이폰 화면을 그대로 볼 수 있어요.
+화면은 **전체화면**으로 크게 보거나, **떠다니는 작은 창**으로 볼 수 있어요.
+같은 Wi-Fi(또는 아이폰 핫스팟)에 연결만 하면 케이블 없이 무선으로 연결됩니다.
+
+> 참고: 화면을 **보기만** 하는 앱이에요. 안드로이드 화면을 터치해도 아이폰이 조작되지는 않아요. 조작은 아이폰에서 하세요.
+
+### 필요한 것
+
+- **안드로이드 10 이상**의 기기 (태블릿, 차량용 화면 등)
+- 아이폰과 **같은 Wi-Fi 네트워크** (또는 아이폰의 핫스팟에 안드로이드 기기를 연결)
+
+### 설치 방법
+
+APK 파일을 직접 받아서 설치하는 방식이에요 (플레이스토어 아님). 처음이라면 아래 순서대로 하세요.
+
+1. 안드로이드 기기에서 위 **[최신 APK 다운로드](https://github.com/gum798/MirrorDrive/releases/latest)** 링크를 엽니다.
+2. APK 파일을 **다운로드**합니다.
+3. 받은 파일을 **엽니다**(탭합니다).
+4. "이 출처의 앱은 설치할 수 없습니다" 같은 안내가 나오면, **"설정" 또는 "허용"**을 눌러 **"출처를 알 수 없는 앱"(이 브라우저/파일 앱에서의 설치)**을 허용해 주세요.
+5. 다시 파일을 열어 **"설치"**를 누르면 끝입니다.
+
+> 이 안내는 안드로이드가 스토어 밖에서 받은 앱을 처음 설치할 때 항상 물어보는 정상적인 과정이에요.
+
+### 쓰는 법
+
+1. 아이폰과 안드로이드 기기를 **같은 Wi-Fi**(또는 아이폰 핫스팟)에 연결합니다.
+2. 안드로이드 기기에서 **MirrorDrive 앱을 실행**합니다.
+3. 아이폰에서 **제어센터**를 엽니다(화면 오른쪽 위에서 아래로 쓸어내리기).
+4. **"화면 미러링"**을 누릅니다.
+5. 목록에서 **MirrorDrive**를 선택합니다.
+6. 잠시 후 아이폰 화면이 안드로이드 기기에 나타납니다. 🎉
+
+### 알아두기
+
+- **넷플릭스·디즈니+·티빙 등 저작권 보호(DRM) 영상은 검은 화면으로 나와요.** 앱 문제가 아니라 아이폰(iOS)이 보호 영상은 미러링을 막기 때문이에요. 이건 해결할 수 없어요.
+- 이 앱은 **개인적·비상업적 사용**을 위한 **오픈소스 프로젝트**예요 (라이선스: **GPL-3.0**). 판매하거나 광고를 붙이는 상업적 배포는 이 프로젝트의 범위가 아니에요.
+- **피드백 환영!** 잘 되거나 안 되는 점이 있으면 편하게 알려주세요.
+
+아래는 개발자를 위한 영어 설명입니다. / The rest of this README (in English) is for developers.
+
+---
+
 - **Runs on:** Android 10+ (`minSdk 29`); built and tested on a Samsung Galaxy Tab.
 - **Intended for:** CarPlay-style Android "AI boxes" and tablets used as a
   secondary dashboard/entertainment screen.
