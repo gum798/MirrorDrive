@@ -23,6 +23,11 @@ object Palette {
     const val SURFACE_FILL = 0xCC141B22.toInt()        // translucent control fill over video
     const val MIRROR_GLOW = 0x3355D6D0.toInt()         // faint cyan halo
     const val MIRROR_RIPPLE = 0x8055D6D0.toInt()       // touch ripple
+
+    // Restrained control tints: small translucent glyphs that let the screen behind show through.
+    const val MIRROR_DIM = 0xCC55D6D0.toInt()          // glyph / grip mark at ~80% (modest alpha)
+    const val MIRROR_HAIRLINE = 0x5955D6D0.toInt()     // thin control outline (cyan @ ~35%)
+    const val MIRROR_FAINT_FILL = 0x1A55D6D0.toInt()   // barely-there chip fill (cyan @ ~10%)
 }
 
 fun Context.dp(v: Number): Int = (resources.displayMetrics.density * v.toFloat()).roundToInt()

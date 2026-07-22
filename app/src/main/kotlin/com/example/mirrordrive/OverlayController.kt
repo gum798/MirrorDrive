@@ -7,14 +7,15 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
@@ -127,15 +128,10 @@ class OverlayController(context: Context) {
         // Drag the body to move the whole window.
         container.setOnTouchListener { _, e -> onDrag(e) }
 
-        // Resize handle (bottom-right) — resizes preserving the video aspect ratio.
-        val handleSize = (metrics.density * 28).toInt()
-        val handle = View(appContext).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = appContext.dpf(6f)
-                setColor(0xAA55D6D0.toInt())   // translucent mirror-cyan grip
-            }
-        }
+        // Resize handle (bottom-right) — a small "///" grip; resizes preserving the aspect ratio.
+        // The touch target is ≥40dp while the drawn mark stays small in the corner.
+        val handleSize = (metrics.density * 44).toInt()
+        val handle = ResizeGripView(appContext)
         container.addView(
             handle,
             FrameLayout.LayoutParams(handleSize, handleSize, Gravity.BOTTOM or Gravity.END),
@@ -204,25 +200,50 @@ class OverlayController(context: Context) {
         }
     }
 
-    /** Cyan-on-dark rounded styling for the floating window's ⤢ / ✕ controls, to match the
-     *  night-dashboard look. Touch handlers and layout params are set by the caller and left
+    /** Small, restrained styling for the floating window's ⤢ / ✕ controls: a thin cyan glyph on
+     *  a barely-there translucent chip (faint cyan fill + hairline outline) so the video behind
+     *  shows through. The chip is inset inside a ≥48dp touch target, so the mark reads small while
+     *  the hit area stays large. Touch handlers and layout params are set by the caller and left
      *  untouched here. */
     private fun styleControl(b: Button) {
-        b.setTextColor(Palette.MIRROR)
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-        b.typeface = Typeface.DEFAULT_BOLD
+        b.setTextColor(controlTextColors())
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+        b.typeface = Typeface.DEFAULT   // lighter weight than bold — thinner, more refined glyph
         b.includeFontPadding = false
         b.stateListAnimator = null
-        b.minWidth = appContext.dp(44)
-        b.minHeight = appContext.dp(44)
-        b.setPadding(appContext.dp(10), appContext.dp(6), appContext.dp(10), appContext.dp(6))
-        val bg = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = appContext.dpf(20f)
-            setColor(Palette.SURFACE_FILL)
-            setStroke(appContext.dp(1.5f), Palette.MIRROR)
+        b.minWidth = appContext.dp(48)  // fixed ≥48dp touch target
+        b.minHeight = appContext.dp(48)
+        b.setPadding(0, 0, 0, 0)
+        // The chip fill/stroke are inset so the visible mark is small while the view stays ≥48dp.
+        b.background = InsetDrawable(controlBackground(), appContext.dp(8))
+    }
+
+    /** Glyph colour: dim mirror-cyan at rest, full mirror when pressed / focused. */
+    private fun controlTextColors() = ColorStateList(
+        arrayOf(
+            intArrayOf(android.R.attr.state_pressed),
+            intArrayOf(android.R.attr.state_focused),
+            intArrayOf(),
+        ),
+        intArrayOf(Palette.MIRROR, Palette.MIRROR, Palette.MIRROR_DIM),
+    )
+
+    /** Translucent circular chip: faint cyan fill throughout, a hairline outline at rest and a
+     *  full-cyan outline when pressed, plus a thicker focus-visible ring — wrapped in a ripple. */
+    private fun controlBackground(): RippleDrawable {
+        val stroke = appContext.dp(1f).coerceAtLeast(1)
+        val focusStroke = appContext.dp(1.5f).coerceAtLeast(2)
+        fun chip(fill: Int, strokeColor: Int, strokeW: Int) = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(fill)
+            setStroke(strokeW, strokeColor)
         }
-        b.background = RippleDrawable(ColorStateList.valueOf(Palette.MIRROR_RIPPLE), bg, null)
+        val bg = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), chip(Palette.MIRROR_FAINT_FILL, Palette.MIRROR, stroke))
+            addState(intArrayOf(android.R.attr.state_focused), chip(Palette.MIRROR_FAINT_FILL, Palette.MIRROR, focusStroke))
+            addState(intArrayOf(), chip(Palette.MIRROR_FAINT_FILL, Palette.MIRROR_HAIRLINE, stroke))
+        }
+        return RippleDrawable(ColorStateList.valueOf(Palette.MIRROR_RIPPLE), bg, null)
     }
 
     private companion object {
