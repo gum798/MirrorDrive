@@ -2,8 +2,13 @@ package com.example.mirrordrive
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.Surface
@@ -104,6 +109,7 @@ class OverlayController(context: Context) {
         container.addView(
             Button(appContext).apply {
                 text = "⤢"
+                styleControl(this)
                 setOnClickListener { onReturnToFullscreen() }
             },
             FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END),
@@ -112,6 +118,7 @@ class OverlayController(context: Context) {
         container.addView(
             Button(appContext).apply {
                 text = "✕"
+                styleControl(this)
                 setOnClickListener { onReturnToFullscreen() }
             },
             FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START),
@@ -122,7 +129,13 @@ class OverlayController(context: Context) {
 
         // Resize handle (bottom-right) — resizes preserving the video aspect ratio.
         val handleSize = (metrics.density * 28).toInt()
-        val handle = View(appContext).apply { setBackgroundColor(Color.argb(170, 255, 255, 255)) }
+        val handle = View(appContext).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = appContext.dpf(6f)
+                setColor(0xAA55D6D0.toInt())   // translucent mirror-cyan grip
+            }
+        }
         container.addView(
             handle,
             FrameLayout.LayoutParams(handleSize, handleSize, Gravity.BOTTOM or Gravity.END),
@@ -189,6 +202,27 @@ class OverlayController(context: Context) {
             }
             else -> false
         }
+    }
+
+    /** Cyan-on-dark rounded styling for the floating window's ⤢ / ✕ controls, to match the
+     *  night-dashboard look. Touch handlers and layout params are set by the caller and left
+     *  untouched here. */
+    private fun styleControl(b: Button) {
+        b.setTextColor(Palette.MIRROR)
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        b.typeface = Typeface.DEFAULT_BOLD
+        b.includeFontPadding = false
+        b.stateListAnimator = null
+        b.minWidth = appContext.dp(44)
+        b.minHeight = appContext.dp(44)
+        b.setPadding(appContext.dp(10), appContext.dp(6), appContext.dp(10), appContext.dp(6))
+        val bg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = appContext.dpf(20f)
+            setColor(Palette.SURFACE_FILL)
+            setStroke(appContext.dp(1.5f), Palette.MIRROR)
+        }
+        b.background = RippleDrawable(ColorStateList.valueOf(Palette.MIRROR_RIPPLE), bg, null)
     }
 
     private companion object {
