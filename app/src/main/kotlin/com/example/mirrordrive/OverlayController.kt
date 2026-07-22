@@ -38,6 +38,11 @@ class OverlayController(context: Context) {
     private var aspectW = 9
     private var aspectH = 16
 
+    // Fixed reference box (longer-edge px) the video aspect is fitted into. Stored so re-fitting
+    // on rotation (updateAspect) never fits-inside-its-own-previous-output — which shrank the
+    // window geometrically every rotation. Updated only on user resize.
+    private var boxPx = 0
+
     // Gesture anchors captured on ACTION_DOWN.
     private var downRawX = 0f
     private var downRawY = 0f
@@ -64,6 +69,7 @@ class OverlayController(context: Context) {
         // Initial size: fit the video aspect into ~60% of the screen's smaller edge.
         val metrics = appContext.resources.displayMetrics
         val box = (minOf(metrics.widthPixels, metrics.heightPixels) * 0.6).toInt()
+        boxPx = box
         val fit = fitInside(box, box, aspectW, aspectH)
 
         val lp = WindowManager.LayoutParams(
@@ -135,7 +141,9 @@ class OverlayController(context: Context) {
         aspectH = videoH
         val lp = params ?: return
         val r = root ?: return
-        val fit = fitInside(lp.width, lp.width, aspectW, aspectH)
+        // Fit into the FIXED reference box, not the window's own (already-fitted) size — fitting
+        // inside a fit shrinks the window geometrically on every rotation.
+        val fit = fitInside(boxPx, boxPx, aspectW, aspectH)
         lp.width = fit.width
         lp.height = fit.height
         wm.updateViewLayout(r, lp)
@@ -176,6 +184,7 @@ class OverlayController(context: Context) {
                 val w = (startW + (e.rawX - downRawX)).toInt().coerceIn(minSizePx, maxW)
                 lp.width = w
                 lp.height = (w.toLong() * aspectH / aspectW).toInt()
+                boxPx = maxOf(lp.width, lp.height)  // reference tracks the user's chosen size
                 wm.updateViewLayout(r, lp); true
             }
             else -> false
