@@ -2,16 +2,22 @@ package com.example.mirrordrive
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.net.wifi.WifiManager
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.net.Uri
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -73,7 +79,48 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
             LayoutParams(WRAP, WRAP, Gravity.CENTER),
         )
 
-        // Bottom status: live dot + device identity in monospace.
+        // Bottom cluster (vertical, centred): scannable QR card, device identity, feedback link.
+        val bottomStack = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+
+        // QR of the feedback form for a bystander to scan. Dark-on-light inside a small rounded
+        // light card — scannability wins over the night-dashboard palette here. Cached + built in
+        // a try/catch, so any encoding failure simply omits the QR instead of crashing.
+        feedbackQr(context)?.let { qr ->
+            val pad = context.dp(8)
+            val card = FrameLayout(context).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = context.dpf(10f)
+                    setColor(QR_CARD)
+                }
+                setPadding(pad, pad, pad, pad)
+                contentDescription = "의견 보내기 QR 코드"
+                addView(
+                    ImageView(context).apply {
+                        setImageBitmap(qr)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                    },
+                    FrameLayout.LayoutParams(context.dp(112), context.dp(112)),
+                )
+            }
+            bottomStack.addView(card, LinearLayout.LayoutParams(WRAP, WRAP))
+            bottomStack.addView(
+                TextView(context).apply {
+                    text = "QR 스캔 · 의견 보내기"
+                    setTextColor(Palette.SILVER_DIM)
+                    typeface = Typeface.SANS_SERIF
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    letterSpacing = 0.04f
+                    gravity = Gravity.CENTER
+                },
+                LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = context.dp(6) },
+            )
+        }
+
+        // Live dot + device identity in monospace.
         val status = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -93,12 +140,50 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
             deviceLine,
             LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = context.dp(8) },
         )
-        addView(
+        bottomStack.addView(
             status,
+            LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = context.dp(14) },
+        )
+
+        // Quiet "피드백" link for this app's own user — a restrained mirror-cyan text link (not a
+        // loud button) that opens the same feedback form in the browser. ≥44dp touch target.
+        val feedback = TextView(context).apply {
+            text = "피드백"
+            contentDescription = "의견 보내기"
+            setTextColor(Palette.MIRROR)
+            typeface = Typeface.SANS_SERIF
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            letterSpacing = 0.06f
+            gravity = Gravity.CENTER
+            minHeight = context.dp(44)
+            minWidth = context.dp(44)
+            setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(4))
+            isClickable = true
+            isFocusable = true
+            background = RippleDrawable(ColorStateList.valueOf(Palette.MIRROR_RIPPLE), null, null)
+            setOnClickListener { openFeedbackForm(context) }
+        }
+        bottomStack.addView(feedback, LinearLayout.LayoutParams(WRAP, WRAP))
+
+        addView(
+            bottomStack,
             LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = context.dp(28)
+                bottomMargin = context.dp(18)
             },
         )
+    }
+
+    /** Open the feedback form in the browser. NEW_TASK because the waiting view runs inside an
+     *  activity/overlay; try/catch so a device with no browser fails quietly instead of crashing. */
+    private fun openFeedbackForm(context: Context) {
+        try {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(FEEDBACK_URL))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            // No browser / no handling activity — ignore rather than crash the waiting screen.
+        }
     }
 
     /** Read device id / port / Wi-Fi IPv4 (safe before native init: shows "—"), until complete. */
@@ -154,10 +239,19 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
 
     private companion object {
         const val WRAP = LayoutParams.WRAP_CONTENT
+        const val FEEDBACK_URL = "https://forms.gle/iwziaX1fZ5CToPyD7"
+        const val QR_CARD = 0xFFEAEEF0.toInt()   // light card so the QR stays scannable
+
+        // Encode the feedback-form QR once and cache it across view (re)creations.
+        private var qrCache: Bitmap? = null
+        fun feedbackQr(context: Context): Bitmap? {
+            qrCache?.let { return it }
+            return encodeQr(FEEDBACK_URL, context.dp(112), Palette.GROUND, QR_CARD)
+                .also { qrCache = it }
+        }
     }
 }
 
-/** Wi-Fi IPv4 as a dotted string, or null if not on Wi-Fi. Mirrors DiscoveryService.wifiIpv4. */
 /**
  * A small connected-signal dot: a solid green core inside a soft green halo that gently
  * breathes. Static under reduced motion.
