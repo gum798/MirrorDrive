@@ -6,10 +6,6 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.RippleDrawable
-import android.graphics.drawable.StateListDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -106,20 +102,22 @@ class OverlayController(context: Context) {
             override fun surfaceDestroyed(h: SurfaceHolder) {}
         })
 
-        // Return-to-fullscreen control (top-right).
+        // Return-to-fullscreen control (top-right) — glyph hugged into the top-end corner.
         container.addView(
             Button(appContext).apply {
                 text = "⤢"
                 styleControl(this)
+                gravity = Gravity.TOP or Gravity.END
                 setOnClickListener { onReturnToFullscreen() }
             },
             FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END),
         )
-        // Close control (top-left) — dismiss the floating window and restore fullscreen.
+        // Close control (top-left) — glyph hugged into the top-start corner; dismiss + restore.
         container.addView(
             Button(appContext).apply {
                 text = "✕"
                 styleControl(this)
+                gravity = Gravity.TOP or Gravity.START
                 setOnClickListener { onReturnToFullscreen() }
             },
             FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START),
@@ -200,22 +198,23 @@ class OverlayController(context: Context) {
         }
     }
 
-    /** Small, restrained styling for the floating window's ⤢ / ✕ controls: a thin cyan glyph on
-     *  a barely-there translucent chip (faint cyan fill + hairline outline) so the video behind
-     *  shows through. The chip is inset inside a ≥48dp touch target, so the mark reads small while
-     *  the hit area stays large. Touch handlers and layout params are set by the caller and left
-     *  untouched here. */
+    /** Bare, restrained styling for the floating window's ⤢ / ✕ controls: just a thin cyan glyph
+     *  — no chip, fill, or border behind it, so the video shows through completely. The glyph is
+     *  hugged into its corner (caller sets the corner gravity) with only a small padding, inside a
+     *  fixed 48dp transparent touch target. Press / focus brighten the glyph from dim to full
+     *  mirror-cyan (the only state feedback, since there is no background). Touch handlers and
+     *  layout params are set by the caller and left untouched here. */
     private fun styleControl(b: Button) {
         b.setTextColor(controlTextColors())
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         b.typeface = Typeface.DEFAULT   // lighter weight than bold — thinner, more refined glyph
         b.includeFontPadding = false
         b.stateListAnimator = null
-        b.minWidth = appContext.dp(48)  // fixed ≥48dp touch target
+        b.minWidth = appContext.dp(48)  // fixed 48dp transparent touch target
         b.minHeight = appContext.dp(48)
-        b.setPadding(0, 0, 0, 0)
-        // The chip fill/stroke are inset so the visible mark is small while the view stays ≥48dp.
-        b.background = InsetDrawable(controlBackground(), appContext.dp(8))
+        // Small padding so the corner-aligned glyph hugs the corner without touching the edge.
+        b.setPadding(appContext.dp(4), appContext.dp(4), appContext.dp(4), appContext.dp(4))
+        b.background = null             // no chip / fill / border — bare glyph only
     }
 
     /** Glyph colour: dim mirror-cyan at rest, full mirror when pressed / focused. */
@@ -227,24 +226,6 @@ class OverlayController(context: Context) {
         ),
         intArrayOf(Palette.MIRROR, Palette.MIRROR, Palette.MIRROR_DIM),
     )
-
-    /** Translucent circular chip: faint cyan fill throughout, a hairline outline at rest and a
-     *  full-cyan outline when pressed, plus a thicker focus-visible ring — wrapped in a ripple. */
-    private fun controlBackground(): RippleDrawable {
-        val stroke = appContext.dp(1f).coerceAtLeast(1)
-        val focusStroke = appContext.dp(1.5f).coerceAtLeast(2)
-        fun chip(fill: Int, strokeColor: Int, strokeW: Int) = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(fill)
-            setStroke(strokeW, strokeColor)
-        }
-        val bg = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_pressed), chip(Palette.MIRROR_FAINT_FILL, Palette.MIRROR, stroke))
-            addState(intArrayOf(android.R.attr.state_focused), chip(Palette.MIRROR_FAINT_FILL, Palette.MIRROR, focusStroke))
-            addState(intArrayOf(), chip(Palette.MIRROR_FAINT_FILL, Palette.MIRROR_HAIRLINE, stroke))
-        }
-        return RippleDrawable(ColorStateList.valueOf(Palette.MIRROR_RIPPLE), bg, null)
-    }
 
     private companion object {
         const val WRAP = FrameLayout.LayoutParams.WRAP_CONTENT

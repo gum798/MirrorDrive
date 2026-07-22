@@ -22,8 +22,8 @@ class ResizeGripView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
     }
 
-    // Grip geometry (px): the mark hugs the bottom-right corner, small relative to the touch area.
-    private val edge = context.dpf(6f)    // inset of the corner-most stroke from the view edge
+    // Grip geometry (px): the mark sits right in the bottom-right corner, small vs. the touch area.
+    private val edge = context.dpf(2.5f)  // inset of the corner-most stroke from the view edge
     private val step = context.dpf(4.5f)  // spacing between the three nested strokes
     private val base = context.dpf(6f)    // length of the shortest (corner-most) stroke
 
