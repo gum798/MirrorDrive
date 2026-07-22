@@ -21,6 +21,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
     private lateinit var videoRenderer: VideoRenderer
+    private lateinit var audioRenderer: AudioRenderer
     private lateinit var overlayController: OverlayController
     private lateinit var root: FrameLayout
     private lateinit var aspectView: AspectRatioFrameLayout
@@ -123,6 +124,13 @@ class MainActivity : AppCompatActivity() {
         )
         // Register the renderer as the native video sink before any stream arrives.
         NativeBridge.setVideoSink(videoRenderer)
+
+        // Audio is independent of the surface/overlay and purely additive: create the
+        // renderer once, then decode + play AAC-ELD frames as they arrive. The ASC for
+        // 44100/stereo AirPlay-mirroring AAC-ELD is the fixed constant F8 E8 50 00.
+        audioRenderer = AudioRenderer()
+        audioRenderer.configure(byteArrayOf(0xF8.toByte(), 0xE8.toByte(), 0x50, 0x00))
+        NativeBridge.setAudioSink(audioRenderer)
         surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 // On first launch the codec is not configured yet (surface just recorded); on a
@@ -213,7 +221,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         ui.removeCallbacks(waitingTick)
-        if (isFinishing) overlayController.hide()
+        if (isFinishing) {
+            overlayController.hide()
+            // Audio has no surface; tear it down only when genuinely leaving mirroring
+            // (never on the overlay/window-mode transition, which keeps the activity alive).
+            if (::audioRenderer.isInitialized) audioRenderer.stop()
+        }
         super.onDestroy()
     }
 }

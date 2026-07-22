@@ -11,4 +11,8 @@ object NativeBridge {
     // Registers the video sink (a VideoRenderer) that native cb_video_process delivers
     // decoded Annex-B H.264 access units to via onAccessUnit(byte[], long, boolean).
     external fun setVideoSink(sink: Any)
+
+    // Registers the audio sink (an AudioRenderer) that native cb_audio_process delivers
+    // compressed AAC-ELD access units to via onAudioFrame(byte[], long).
+    external fun setAudioSink(sink: Any)
 }

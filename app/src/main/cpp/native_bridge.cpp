@@ -2,6 +2,7 @@
 #include <string>
 #include "native_bridge.h"
 #include <cstring>
+#include <cstdint>
 #include <android/log.h>
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  "MirrorDrive", __VA_ARGS__)
@@ -10,6 +11,7 @@
 MirrorContext g_ctx;
 JavaVM *g_vm = nullptr;
 VideoSink g_video;
+AudioSink g_audio;
 
 // Cache the JavaVM so cb_video_process (which runs on a native RTP-mirror thread) can
 // attach to the JVM and deliver access units to the Kotlin VideoRenderer.
@@ -28,6 +30,19 @@ Java_com_example_mirrordrive_NativeBridge_setVideoSink(JNIEnv *env, jobject, job
     g_video.onAu = env->GetMethodID(cls, "onAccessUnit", "([BJZ)V");
     if (!g_video.onAu) LOGE("setVideoSink: onAccessUnit method not found");
     else LOGI("setVideoSink: video sink registered");
+}
+
+// Store a global ref to the AudioRenderer and cache its onAudioFrame method id.
+// Mirrors setVideoSink; cb_audio_process delivers compressed AAC-ELD frames here.
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_mirrordrive_NativeBridge_setAudioSink(JNIEnv *env, jobject, jobject sink) {
+    if (g_audio.obj) env->DeleteGlobalRef(g_audio.obj);
+    g_audio.obj = env->NewGlobalRef(sink);
+    jclass cls = env->GetObjectClass(sink);
+    // void onAudioFrame(byte[] data, long ptsUs)
+    g_audio.onFrame = env->GetMethodID(cls, "onAudioFrame", "([BJ)V");
+    if (!g_audio.onFrame) LOGE("setAudioSink: onAudioFrame method not found");
+    else LOGI("setAudioSink: audio sink registered");
 }
 
 // Route UxPlay's internal logger to logcat so init failures are visible.
@@ -82,7 +97,39 @@ static void cb_video_process(void*, raop_ntp_t*, video_decode_struct *d) {
 
     if (attached) g_vm->DetachCurrentThread();
 }
-static void cb_audio_process(void*, raop_ntp_t*, audio_decode_struct*) {}
+// Real audio bridge: hand each compressed AAC-ELD access unit to the Kotlin AudioRenderer.
+// Runs on a native RTP-audio thread (NOT a JVM thread), so it must attach to the JVM. The
+// payload is freed by UxPlay right after this returns, so the copy must be synchronous.
+static void cb_audio_process(void*, raop_ntp_t*, audio_decode_struct *d) {
+    if (!d || !d->data || d->data_len <= 0) return;
+    if (d->ct != 8) return;                       // AAC-ELD only in v1 (ct=2 ALAC out of scope).
+
+    // Debug: confirm audio frames arrive on the physical device (throttled to avoid spam).
+    static uint32_t audio_frame_count = 0;
+    if ((audio_frame_count++ % 100) == 0) {
+        LOGI("audio frame: %d bytes ct=%d", d->data_len, (int)d->ct);
+    }
+
+    if (!g_vm || !g_audio.obj || !g_audio.onFrame) return;
+
+    JNIEnv *env = nullptr;
+    bool attached = false;
+    if (g_vm->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+        if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+        attached = true;
+    }
+
+    jbyteArray arr = env->NewByteArray(d->data_len);
+    if (arr) {
+        env->SetByteArrayRegion(arr, 0, d->data_len, (const jbyte*)d->data);
+        // ntp_time_remote is already in nanoseconds here; convert to microseconds.
+        jlong ptsUs = (jlong)(d->ntp_time_remote / 1000ULL);
+        env->CallVoidMethod(g_audio.obj, g_audio.onFrame, arr, ptsUs);
+        env->DeleteLocalRef(arr);
+    }
+
+    if (attached) g_vm->DetachCurrentThread();
+}
 static void cb_video_pause(void*) {}
 static void cb_video_resume(void*) {}
 static void cb_video_flush(void*) {}
@@ -204,3 +251,11 @@ extern "C" JNIEXPORT jint JNICALL
 Java_com_example_mirrordrive_NativeBridge_nativeGetPort(JNIEnv *env, jobject) {
     return (jint)g_ctx.port;
 }
+
+// NOTE: an fdk-aac AAC-ELD fallback decoder (aacDecoder_Open(TT_MP4_RAW,1) + aacDecoder_ConfigRaw
+// + Fill/DecodeFrame) was implemented here but had to be removed: the Task 1 prebuilt
+// libfdk-aac.a is NOT compiled with -fPIC, so referencing any of its symbols from this shared
+// library breaks the arm64 link (R_AARCH64_ADR_PREL_PG_HI21 against fft_32/fft_16 etc). It only
+// linked before because nothing referenced it (dead-stripped). Re-enabling the fallback requires
+// recompiling fdk-aac with -fPIC. Until then the MediaCodec AAC-ELD path (AudioRenderer) is the
+// sole decoder; the CMake fdkaac linkage is left in place (harmless while unreferenced).

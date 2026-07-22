@@ -21,3 +21,11 @@ struct VideoSink {
     jmethodID onAu = nullptr;   // void onAccessUnit(byte[] data, long ptsUs, boolean isConfig)
 };
 extern VideoSink g_video;
+
+// The Kotlin AudioRenderer sink: a global ref plus the cached onAudioFrame method id.
+// Mirrors VideoSink; native cb_audio_process delivers compressed AAC-ELD access units.
+struct AudioSink {
+    jobject obj = nullptr;        // global ref to the AudioRenderer
+    jmethodID onFrame = nullptr;  // void onAudioFrame(byte[] data, long ptsUs)
+};
+extern AudioSink g_audio;
