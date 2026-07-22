@@ -63,6 +63,7 @@ class OverlayController(context: Context) {
         videoH: Int,
         onSurface: (Surface) -> Unit,
         onReturnToFullscreen: () -> Unit,
+        onClose: () -> Unit,
     ) {
         if (isShowing) return
         aspectW = if (videoW > 0) videoW else 9
@@ -102,7 +103,7 @@ class OverlayController(context: Context) {
             override fun surfaceDestroyed(h: SurfaceHolder) {}
         })
 
-        // Return-to-fullscreen control (top-right) — glyph hugged into the top-end corner.
+        // Switch-to-fullscreen control (top-right) — glyph hugged into the top-end corner.
         container.addView(
             Button(appContext).apply {
                 text = "⤢"
@@ -112,13 +113,14 @@ class OverlayController(context: Context) {
             },
             FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END),
         )
-        // Close control (top-left) — glyph hugged into the top-start corner; dismiss + restore.
+        // Quit control (top-left) — glyph hugged into the top-start corner; stops mirroring and
+        // closes the app entirely (NOT a return-to-fullscreen).
         container.addView(
             Button(appContext).apply {
                 text = "✕"
                 styleControl(this)
                 gravity = Gravity.TOP or Gravity.START
-                setOnClickListener { onReturnToFullscreen() }
+                setOnClickListener { onClose() }
             },
             FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START),
         )

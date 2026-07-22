@@ -107,6 +107,20 @@ class MainActivity : AppCompatActivity() {
                 marginEnd = dp(16)
             },
         )
+        // ✕ quit control, sat just to the left of 창 모드 in the top-end area. Same restrained
+        // night-dashboard chip; tapping it stops mirroring and closes the app entirely.
+        root.addView(
+            buildQuitButton(this) { closeApp() },
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END,
+            ).apply {
+                topMargin = dp(16)
+                // Clear the 창 모드 button (48dp touch target) plus a small gap.
+                marginEnd = dp(16) + dp(48) + dp(4)
+            },
+        )
         setContentView(root)
 
         overlayController = OverlayController(this)
@@ -180,16 +194,35 @@ class MainActivity : AppCompatActivity() {
             videoH = videoH,
             onSurface = { s -> videoRenderer.setSurface(s) },
             onReturnToFullscreen = {
-                // Bring this (singleTask) activity back to the front; its surfaceCreated then
-                // swaps the decoder back to fullscreen and dismisses the overlay.
+                // ⤢ — switch back to fullscreen. Dismiss the overlay immediately; don't rely on
+                // surfaceCreated firing on re-entry (it may not, if the activity's surface
+                // survived), which left the ⤢ control doing nothing. Then bring this activity to
+                // the front, where surfaceCreated re-attaches the decoder to the fullscreen surface.
+                overlayActive = false
+                overlayController.hide()
                 startActivity(
                     Intent(this, MainActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
                 )
             },
+            onClose = { closeApp() },   // ✕ — quit the app entirely.
         )
         overlayActive = true
         moveTaskToBack(true)
+    }
+
+    /**
+     * Full, clean shutdown (the ✕ quit action, from both the overlay and fullscreen): stop
+     * mirroring and leave the app. Dismiss any floating overlay, stop the receiver service — its
+     * onDestroy tears down mDNS discovery and the native AirPlay session — and drop the task from
+     * recents. The video/audio renderers are released by the normal activity lifecycle
+     * (surfaceDestroyed / onDestroy while isFinishing), which finishAndRemoveTask triggers.
+     */
+    private fun closeApp() {
+        overlayActive = false
+        overlayController.hide()
+        stopService(Intent(this, ReceiverService::class.java))
+        finishAndRemoveTask()
     }
 
     override fun onResume() {
