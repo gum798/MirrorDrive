@@ -40,7 +40,9 @@ class DiscoveryService(private val context: Context) {
         lock = wifi.createMulticastLock("mirrordrive-mdns").apply {
             setReferenceCounted(true); acquire()
         }
-        val addr = wifiIpv4(wifi) ?: error("no wifi ipv4")
+        // Enumerate interfaces (not the STA-only WifiInfo API) so this works on shared Wi-Fi,
+        // joined to an iPhone hotspot, or acting as the SoftAP hotspot itself.
+        val addr = localIpv4() ?: error("no local ipv4")
         val jm = JmDNS.create(addr, name)
         jm.registerService(ServiceInfo.create(
             "_airplay._tcp.local.", name, port, 0, 0, airplayTxt(deviceId, pkHex)))
@@ -52,15 +54,5 @@ class DiscoveryService(private val context: Context) {
     fun stop() = io.execute {
         jmdns?.unregisterAllServices(); jmdns?.close(); jmdns = null
         lock?.let { if (it.isHeld) it.release() }; lock = null
-    }
-
-    private fun wifiIpv4(wifi: WifiManager): InetAddress? {
-        @Suppress("DEPRECATION")
-        val ip = wifi.connectionInfo.ipAddress
-        if (ip == 0) return null
-        val bytes = byteArrayOf(
-            (ip and 0xff).toByte(), (ip shr 8 and 0xff).toByte(),
-            (ip shr 16 and 0xff).toByte(), (ip shr 24 and 0xff).toByte())
-        return InetAddress.getByAddress(bytes)
     }
 }

@@ -106,7 +106,7 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
         if (deviceInfoComplete) return
         val id = runCatching { NativeBridge.nativeGetDeviceId() }.getOrNull()?.takeIf { it.isNotBlank() }
         val port = runCatching { NativeBridge.nativeGetPort() }.getOrDefault(0)
-        val ip = wifiIpv4String(context)
+        val ip = localIpv4String()
         val idText = id ?: "—"
         val addrText = if (ip != null && port > 0) "$ip:$port" else "—"
         deviceLine.text = "device $idText\n$addrText"
@@ -158,17 +158,6 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
 }
 
 /** Wi-Fi IPv4 as a dotted string, or null if not on Wi-Fi. Mirrors DiscoveryService.wifiIpv4. */
-fun wifiIpv4String(context: Context): String? {
-    val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        ?: return null
-    @Suppress("DEPRECATION")
-    val ip = wifi.connectionInfo?.ipAddress ?: 0
-    if (ip == 0) return null
-    return "%d.%d.%d.%d".format(
-        ip and 0xff, ip shr 8 and 0xff, ip shr 16 and 0xff, ip shr 24 and 0xff,
-    )
-}
-
 /**
  * A small connected-signal dot: a solid green core inside a soft green halo that gently
  * breathes. Static under reduced motion.
