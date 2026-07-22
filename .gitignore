@@ -8,3 +8,13 @@ local.properties
 app/src/main/cpp/prebuilt/*/
 !app/src/main/cpp/prebuilt/.gitkeep
 app/src/main/cpp/uxplay/
+
+# Signing secrets — NEVER commit these.
+*.jks
+*.keystore
+keystore.properties
+
+# Built artifacts (APKs / bundles are build output, not source).
+*.apk
+*.aab
+
