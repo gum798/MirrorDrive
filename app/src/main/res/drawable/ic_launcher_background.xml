@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MirrorDrive launcher background — the "night dashboard" ground.
+  Deep night ink (#0B0F14) with a very subtle radial lift toward the raised
+  surface tone (#141B22) in the upper-center, so the mark appears to sit over a
+  soft glow rather than a flat field. Fills the full 108dp adaptive canvas.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0 h108 v108 h-108 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="49"
+                android:gradientRadius="72">
+                <item android:offset="0.0" android:color="#161E27"/>
+                <item android:offset="0.55" android:color="#0F141A"/>
+                <item android:offset="1.0" android:color="#0B0F14"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
