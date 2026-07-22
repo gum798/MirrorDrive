@@ -21,6 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var videoRenderer: VideoRenderer
     private lateinit var overlayController: OverlayController
     private lateinit var root: FrameLayout
+    private lateinit var aspectView: AspectRatioFrameLayout
     private lateinit var surfaceView: SurfaceView
 
     // Real decoded video size (portrait for a portrait iPhone), reported by the renderer.
@@ -37,6 +38,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep the screen on while mirroring (user request).
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -44,12 +47,21 @@ class MainActivity : AppCompatActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
-        // Black container so the letterbox/pillarbox bars are black; the SurfaceView is sized
-        // to the fitted video rect and centred within it (Feature 1).
+        // Black container so the letterbox/pillarbox bars are black; the aspect view sizes
+        // itself to the fitted video rect (in its onMeasure) and is centred within root, and
+        // the SurfaceView fills the aspect view (Feature 1).
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        aspectView = AspectRatioFrameLayout(this)
         surfaceView = SurfaceView(this)
-        root.addView(
+        aspectView.addView(
             surfaceView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        root.addView(
+            aspectView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -69,15 +81,13 @@ class MainActivity : AppCompatActivity() {
             ),
         )
         setContentView(root)
-        // Recompute the letterbox whenever the container is (re)laid out.
-        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyLetterbox() }
 
         overlayController = OverlayController(this)
         videoRenderer = VideoRenderer(
             onVideoSize = { w, h ->
                 runOnUiThread {
                     videoW = w; videoH = h
-                    applyLetterbox()
+                    aspectView.setAspect(w, h)
                     if (overlayActive) overlayController.updateAspect(w, h)
                 }
             },
@@ -110,18 +120,6 @@ class MainActivity : AppCompatActivity() {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         startForegroundService(android.content.Intent(this, ReceiverService::class.java))
-    }
-
-    /** Fit the SurfaceView to the video aspect inside the container, centred (Feature 1). */
-    private fun applyLetterbox() {
-        val fit = fitInside(root.width, root.height, videoW, videoH)
-        if (fit.width == 0 || fit.height == 0) return
-        val lp = surfaceView.layoutParams as FrameLayout.LayoutParams
-        if (lp.width == fit.width && lp.height == fit.height) return
-        lp.width = fit.width
-        lp.height = fit.height
-        lp.gravity = Gravity.CENTER
-        surfaceView.layoutParams = lp
     }
 
     private fun requestOverlay() {
