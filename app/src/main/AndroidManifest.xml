@@ -12,7 +12,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-feature android:name="android.hardware.wifi" android:required="false"/>
 
-    <application android:label="MirrorDrive" android:allowBackup="false"
+    <application android:name=".App" android:label="MirrorDrive" android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.AppCompat.NoActionBar">
@@ -25,6 +25,7 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity android:name=".ErrorActivity" android:exported="false"/>
         <service android:name=".ReceiverService" android:exported="false"
             android:foregroundServiceType="mediaPlayback"/>
     </application>

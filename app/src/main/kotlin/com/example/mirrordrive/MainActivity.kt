@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -136,6 +137,15 @@ class MainActivity : AppCompatActivity() {
                 }
             },
         )
+        // Native gate: if libmirrordrive failed to load (e.g. an x86 cast box with an arm-only
+        // .so, or a locked ROM missing a system lib), do NOT touch any native/service wiring —
+        // that would throw and insta-crash. Instead show a screenshot-able report naming the
+        // device's ABIs and let onCreate complete. The waiting UI stays up behind it.
+        if (!NativeBridge.available) {
+            showNativeUnavailable()
+            return
+        }
+
         // Register the renderer as the native video sink before any stream arrives.
         NativeBridge.setVideoSink(videoRenderer)
 
@@ -165,12 +175,42 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        // A customized ROM can reject the notification-permission prompt or the foreground-service
+        // start outright; neither must be allowed to crash onCreate. Wrap both so the UI survives
+        // and the failure is logged rather than fatal.
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+            }
+        }.onFailure { Log.e(TAG, "notification permission request failed", it) }
+        runCatching {
+            startForegroundService(android.content.Intent(this, ReceiverService::class.java))
+        }.onFailure { Log.e(TAG, "startForegroundService failed", it) }
+    }
+
+    /**
+     * Native library unavailable: pop the bulletproof [ErrorActivity] with a clear, screenshot-able
+     * message naming the device's CPU ABIs (the usual culprit — an arm-only build on an x86 box).
+     * Never touches native code. Falls back silently if even launching the activity fails.
+     */
+    private fun showNativeUnavailable() {
+        val msg = buildString {
+            append("This device's CPU/ABI isn't supported by MirrorDrive.\n\n")
+            append("device: ${Build.MANUFACTURER} ${Build.MODEL}\n")
+            append("sdk: ${Build.VERSION.SDK_INT}\n")
+            append("abis: ${Build.SUPPORTED_ABIS.joinToString(",")}\n\n")
+            append("The MirrorDrive native library could not be loaded on this hardware. ")
+            append("Screenshot this and send it to support.")
         }
-        startForegroundService(android.content.Intent(this, ReceiverService::class.java))
+        Log.e(TAG, "native unavailable: $msg")
+        runCatching {
+            startActivity(
+                Intent(this, ErrorActivity::class.java)
+                    .putExtra(ErrorActivity.EXTRA_MESSAGE, msg),
+            )
+        }.onFailure { Log.e(TAG, "could not show ErrorActivity", it) }
     }
 
     private fun requestOverlay() {
@@ -261,5 +301,9 @@ class MainActivity : AppCompatActivity() {
             if (::audioRenderer.isInitialized) audioRenderer.stop()
         }
         super.onDestroy()
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }

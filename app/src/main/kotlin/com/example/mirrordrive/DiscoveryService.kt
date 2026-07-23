@@ -2,6 +2,7 @@ package com.example.mirrordrive
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.util.Log
 import java.net.InetAddress
 import java.util.concurrent.Executors
 import javax.jmdns.JmDNS
@@ -36,19 +37,27 @@ class DiscoveryService(private val context: Context) {
     private val io = Executors.newSingleThreadExecutor()
 
     fun start(name: String, port: Int, pkHex: String, deviceId: String) = io.execute {
-        val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        lock = wifi.createMulticastLock("mirrordrive-mdns").apply {
-            setReferenceCounted(true); acquire()
+        // On an Ethernet-only or otherwise odd cast box, WIFI_SERVICE may be absent, the multicast
+        // lock may fail, or there may be no local IPv4 — any of which previously threw off this
+        // executor thread and killed the process. Wrap the whole start so a failure just disables
+        // discovery (mirroring won't work here) instead of crashing the app.
+        try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            lock = wifi.createMulticastLock("mirrordrive-mdns").apply {
+                setReferenceCounted(true); acquire()
+            }
+            // Enumerate interfaces (not the STA-only WifiInfo API) so this works on shared Wi-Fi,
+            // joined to an iPhone hotspot, or acting as the SoftAP hotspot itself.
+            val addr = localIpv4() ?: error("no local ipv4")
+            val jm = JmDNS.create(addr, name)
+            jm.registerService(ServiceInfo.create(
+                "_airplay._tcp.local.", name, port, 0, 0, airplayTxt(deviceId, pkHex)))
+            jm.registerService(ServiceInfo.create(
+                "_raop._tcp.local.", raopInstanceName(deviceId, name), port, 0, 0, raopTxt(pkHex)))
+            jmdns = jm
+        } catch (t: Throwable) {
+            Log.e("DiscoveryService", "mDNS discovery start failed; mirroring disabled here", t)
         }
-        // Enumerate interfaces (not the STA-only WifiInfo API) so this works on shared Wi-Fi,
-        // joined to an iPhone hotspot, or acting as the SoftAP hotspot itself.
-        val addr = localIpv4() ?: error("no local ipv4")
-        val jm = JmDNS.create(addr, name)
-        jm.registerService(ServiceInfo.create(
-            "_airplay._tcp.local.", name, port, 0, 0, airplayTxt(deviceId, pkHex)))
-        jm.registerService(ServiceInfo.create(
-            "_raop._tcp.local.", raopInstanceName(deviceId, name), port, 0, 0, raopTxt(pkHex)))
-        jmdns = jm
     }
 
     fun stop() = io.execute {

@@ -1,7 +1,29 @@
 package com.example.mirrordrive
 
+import android.os.Build
+import android.util.Log
+
 object NativeBridge {
-    init { System.loadLibrary("mirrordrive") }
+    /**
+     * True iff libmirrordrive.so loaded successfully. Computed once, guarded so a failed load
+     * (e.g. an x86 box with an arm-only .so, or a locked ROM missing libmediandk.so) never
+     * throws out of class init and kills the process. UnsatisfiedLinkError is an Error, not an
+     * Exception, so we catch [Throwable]. Callers must check this before invoking any external
+     * fun below; doing so on an unavailable library would itself throw.
+     */
+    @JvmField
+    val available: Boolean = try {
+        System.loadLibrary("mirrordrive")
+        true
+    } catch (t: Throwable) {
+        Log.e(
+            "NativeBridge",
+            "native load failed; supported ABIs=${Build.SUPPORTED_ABIS.joinToString(",")}",
+            t,
+        )
+        false
+    }
+
     external fun nativeVersion(): String
     external fun nativeInit(filesDir: String): Boolean
     external fun nativeGetPublicKeyHex(): String
