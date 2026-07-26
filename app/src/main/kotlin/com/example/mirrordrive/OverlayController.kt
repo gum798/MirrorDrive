@@ -1,10 +1,12 @@
 package com.example.mirrordrive
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.Gravity
@@ -13,6 +15,7 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 
@@ -54,6 +57,13 @@ class OverlayController(context: Context) {
     private var startH = 0
 
     private val minSizePx = (appContext.resources.displayMetrics.density * 120).toInt()
+
+    // How close (px) a window edge must be to a screen edge, on release, to be pulled flush to it —
+    // the "magnet" gauge. Drop the window further than this from every edge and it stays put.
+    private val snapThresholdPx = appContext.dp(40)
+
+    // Runs the short glide from where the window was released to its snapped resting position.
+    private var snapAnim: ValueAnimator? = null
 
     val isShowing: Boolean get() = root != null
 
@@ -159,6 +169,8 @@ class OverlayController(context: Context) {
     }
 
     fun hide() {
+        snapAnim?.cancel()
+        snapAnim = null
         root?.let { runCatching { wm.removeView(it) } }
         root = null
         params = null
@@ -169,6 +181,7 @@ class OverlayController(context: Context) {
         val r = root ?: return false
         return when (e.action) {
             MotionEvent.ACTION_DOWN -> {
+                snapAnim?.cancel()   // grab the window mid-glide if a snap is still animating
                 downRawX = e.rawX; downRawY = e.rawY; startX = lp.x; startY = lp.y; true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -176,8 +189,74 @@ class OverlayController(context: Context) {
                 lp.y = startY + (e.rawY - downRawY).toInt()
                 wm.updateViewLayout(r, lp); true
             }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                snapToEdges(); true
+            }
             else -> false
         }
+    }
+
+    /**
+     * The magnet. Called on release: clamp the window fully on-screen (so a fling can never lose
+     * it), then, per axis independently, pull it flush to whichever screen edge is within
+     * [snapThresholdPx] — nearer edge wins, ties go to the leading edge. Snapping X and Y
+     * separately means corners fall out naturally. A window dropped away from every edge keeps its
+     * spot. The move to the resting position is animated so it reads as a magnetic pull.
+     */
+    private fun snapToEdges() {
+        val lp = params ?: return
+        val r = root ?: return
+        val screen = screenSize()
+        val maxX = maxOf(0, screen.x - lp.width)
+        val maxY = maxOf(0, screen.y - lp.height)
+
+        var targetX = lp.x.coerceIn(0, maxX)
+        val distLeft = targetX
+        val distRight = maxX - targetX
+        if (distLeft <= distRight) {
+            if (distLeft <= snapThresholdPx) targetX = 0
+        } else {
+            if (distRight <= snapThresholdPx) targetX = maxX
+        }
+
+        var targetY = lp.y.coerceIn(0, maxY)
+        val distTop = targetY
+        val distBottom = maxY - targetY
+        if (distTop <= distBottom) {
+            if (distTop <= snapThresholdPx) targetY = 0
+        } else {
+            if (distBottom <= snapThresholdPx) targetY = maxY
+        }
+
+        animateSnap(lp, r, targetX, targetY)
+    }
+
+    /** Glide the window from its current [WindowManager.LayoutParams] position to (tx, ty). */
+    private fun animateSnap(lp: WindowManager.LayoutParams, r: FrameLayout, tx: Int, ty: Int) {
+        snapAnim?.cancel()
+        val fromX = lp.x
+        val fromY = lp.y
+        if (fromX == tx && fromY == ty) return
+        snapAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 180
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                val f = it.animatedValue as Float
+                lp.x = (fromX + (tx - fromX) * f).toInt()
+                lp.y = (fromY + (ty - fromY) * f).toInt()
+                runCatching { wm.updateViewLayout(r, lp) }
+            }
+            start()
+        }
+    }
+
+    /** Real full-screen size in px — the coordinate space of [WindowManager.LayoutParams] x/y for a
+     *  TOP|START, FLAG_LAYOUT_NO_LIMITS overlay. Re-read each release so it tracks rotation. */
+    private fun screenSize(): Point {
+        val p = Point()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealSize(p)
+        return p
     }
 
     private fun onResize(e: MotionEvent): Boolean {
