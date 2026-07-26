@@ -168,10 +168,13 @@ class MainActivity : AppCompatActivity() {
             }
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) {
-                // Backgrounding into overlay mode destroys this fullscreen Surface, but the
-                // decoder must keep running (it now renders into the overlay Surface), so only
-                // tear it down when we are genuinely leaving mirroring.
-                if (!overlayActive) videoRenderer.release()
+                // The fullscreen Surface is destroyed transiently on a mode switch (into overlay
+                // mode, and on some devices during the return transition) while the decoder keeps
+                // running into the other Surface. Releasing on any such transient loss would
+                // permanently kill mirroring — so tear the decoder down only on a genuine app exit
+                // (isFinishing). Re-attaching to a fresh fullscreen Surface is handled by
+                // surfaceCreated / onResume.
+                if (isFinishing) videoRenderer.release()
             }
         })
 
@@ -267,6 +270,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Returning to the foreground in fullscreen mode: re-point the decoder at the fullscreen
+        // Surface. We cannot rely on surfaceCreated re-firing on the return from window mode — on
+        // devices where the fullscreen Surface SURVIVES the overlay-mode backgrounding, no
+        // surfaceCreated arrives, so the decoder would keep rendering into the just-destroyed
+        // overlay Surface and fullscreen shows only the waiting screen. Re-attaching here is
+        // idempotent (setOutputSurface on the running codec); if the Surface was instead destroyed,
+        // it is not valid yet and surfaceCreated re-attaches on recreation.
+        if (!overlayActive && ::videoRenderer.isInitialized) {
+            surfaceView.holder.surface?.takeIf { it.isValid }?.let { videoRenderer.setSurface(it) }
+        }
         ui.removeCallbacks(waitingTick)
         ui.post(waitingTick)
     }
@@ -296,6 +309,10 @@ class MainActivity : AppCompatActivity() {
         ui.removeCallbacks(waitingTick)
         if (isFinishing) {
             overlayController.hide()
+            // Genuine exit: release the decoder here too, not only via surfaceDestroyed — with the
+            // isFinishing-gated teardown in surfaceDestroyed, a finish that arrives without a
+            // surfaceDestroyed callback would otherwise leak the codec. release() is idempotent.
+            if (::videoRenderer.isInitialized) videoRenderer.release()
             // Audio has no surface; tear it down only when genuinely leaving mirroring
             // (never on the overlay/window-mode transition, which keeps the activity alive).
             if (::audioRenderer.isInitialized) audioRenderer.stop()
