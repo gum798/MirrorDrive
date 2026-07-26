@@ -74,6 +74,21 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
             },
             LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = context.dp(10) },
         )
+        // Car-context caveat: the iPhone cannot run wireless CarPlay and screen mirroring at the
+        // same time (an iOS restriction, not ours). On a CarPlay box that's the #1 reason the phone
+        // never finds MirrorDrive, so we say it here where the user is already looking + waiting.
+        center.addView(
+            TextView(context).apply {
+                text = "무선 카플레이 사용 중엔 연결되지 않아요 · 카플레이를 끄고 연결하세요"
+                setTextColor(Palette.SILVER_DIM)
+                typeface = Typeface.SANS_SERIF
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                alpha = 0.7f
+                letterSpacing = 0.02f
+                gravity = Gravity.CENTER
+            },
+            LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = context.dp(8) },
+        )
         addView(
             center,
             LayoutParams(WRAP, WRAP, Gravity.CENTER),
