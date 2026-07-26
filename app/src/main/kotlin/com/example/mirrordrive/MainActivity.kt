@@ -157,14 +157,10 @@ class MainActivity : AppCompatActivity() {
         NativeBridge.setAudioSink(audioRenderer)
         surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
-                // On first launch the codec is not configured yet (surface just recorded); on a
-                // return from overlay mode the running codec swaps back to this fullscreen
-                // Surface in place. Either way, no reconfigure.
-                videoRenderer.setSurface(holder.surface)
-                if (overlayActive) {
-                    overlayController.hide()
-                    overlayActive = false
-                }
+                // First launch: records the Surface (codec not yet configured). Return from window
+                // mode: the running codec swaps onto this fullscreen Surface and THEN the overlay is
+                // dismissed. No reconfigure either way.
+                enterFullscreenWith(holder.surface)
             }
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -237,12 +233,14 @@ class MainActivity : AppCompatActivity() {
             videoH = videoH,
             onSurface = { s -> videoRenderer.setSurface(s) },
             onReturnToFullscreen = {
-                // ⤢ — switch back to fullscreen. Dismiss the overlay immediately; don't rely on
-                // surfaceCreated firing on re-entry (it may not, if the activity's surface
-                // survived), which left the ⤢ control doing nothing. Then bring this activity to
-                // the front, where surfaceCreated re-attaches the decoder to the fullscreen surface.
-                overlayActive = false
-                overlayController.hide()
+                // ⤢ — return to fullscreen. Do NOT dismiss the overlay here: the decoder is still
+                // rendering into the overlay Surface, and destroying it first makes the codec render
+                // into a dead Surface — which errors it irrecoverably, so no later setOutputSurface
+                // can revive it and fullscreen stays black. Instead just bring this activity to the
+                // front; enterFullscreenWith() (from surfaceCreated when the fullscreen Surface was
+                // recreated, or from onResume when it survived) swaps the codec onto the fullscreen
+                // Surface FIRST and only THEN hides the overlay — the mirror image of how entering
+                // window mode works.
                 startActivity(
                     Intent(this, MainActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
@@ -268,17 +266,30 @@ class MainActivity : AppCompatActivity() {
         finishAndRemoveTask()
     }
 
+    /**
+     * Attach the decoder to the (valid) fullscreen [surface] and, if the floating overlay is up,
+     * dismiss it — always swapping the codec onto the fullscreen Surface BEFORE the overlay Surface
+     * is destroyed, so the codec never renders into a dead Surface (which errors it irrecoverably →
+     * black fullscreen). Invariant: a foregrounded MainActivity means fullscreen mode, no overlay.
+     * Idempotent: safe to call on every surfaceCreated / onResume.
+     */
+    private fun enterFullscreenWith(surface: android.view.Surface) {
+        if (!::videoRenderer.isInitialized) return
+        videoRenderer.setSurface(surface)
+        if (overlayActive) {
+            overlayController.hide()
+            overlayActive = false
+        }
+    }
+
     override fun onResume() {
         super.onResume()
-        // Returning to the foreground in fullscreen mode: re-point the decoder at the fullscreen
-        // Surface. We cannot rely on surfaceCreated re-firing on the return from window mode — on
-        // devices where the fullscreen Surface SURVIVES the overlay-mode backgrounding, no
-        // surfaceCreated arrives, so the decoder would keep rendering into the just-destroyed
-        // overlay Surface and fullscreen shows only the waiting screen. Re-attaching here is
-        // idempotent (setOutputSurface on the running codec); if the Surface was instead destroyed,
-        // it is not valid yet and surfaceCreated re-attaches on recreation.
-        if (!overlayActive && ::videoRenderer.isInitialized) {
-            surfaceView.holder.surface?.takeIf { it.isValid }?.let { videoRenderer.setSurface(it) }
+        // Complete a return from window mode when the fullscreen Surface SURVIVED backgrounding, so
+        // surfaceCreated won't re-fire. Using the still-valid Surface, enterFullscreenWith swaps the
+        // codec onto fullscreen and then dismisses the overlay. If the Surface was instead destroyed
+        // it isn't valid yet here — surfaceCreated will do it on recreation.
+        if (::surfaceView.isInitialized) {
+            surfaceView.holder.surface?.takeIf { it.isValid }?.let { enterFullscreenWith(it) }
         }
         ui.removeCallbacks(waitingTick)
         ui.post(waitingTick)
@@ -303,6 +314,15 @@ class MainActivity : AppCompatActivity() {
             else -> waitingOverlay.fadeIn()
         }
         waitingOverlay.refreshDeviceInfoIfNeeded()
+        // On-screen diagnostic (test builds): if fullscreen ever gets stuck on the waiting screen,
+        // this line names why — decoder configured/released/error, whether the fullscreen Surface is
+        // valid, the last setSurface outcome, and how long since the last rendered frame.
+        runCatching {
+            val age = if (lastFrameMs == 0L) "-" else "${SystemClock.uptimeMillis() - lastFrameMs}ms"
+            val fsSurf = if (::surfaceView.isInitialized && surfaceView.holder.surface?.isValid == true) 1 else 0
+            val codec = if (::videoRenderer.isInitialized) videoRenderer.debugLine() else "-"
+            waitingOverlay.setDebug("v0.7 ov=${if (overlayActive) 1 else 0} fsSurf=$fsSurf f=$age $codec")
+        }
     }
 
     override fun onDestroy() {
