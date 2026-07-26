@@ -101,11 +101,16 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        // QR of the feedback form for a bystander to scan. Dark-on-light inside a small rounded
-        // light card — scannability wins over the night-dashboard palette here. Cached + built in
-        // a try/catch, so any encoding failure simply omits the QR instead of crashing.
+        // Feedback QR — pinned to the RIGHT edge, vertically centred, in its own stack (card +
+        // caption) so it never overlaps the centred text or the bottom cluster. Dark-on-light
+        // rounded card for scannability. Cached + built in a try/catch, so any encoding failure
+        // simply omits the QR instead of crashing.
         feedbackQr(context)?.let { qr ->
             val pad = context.dp(8)
+            val qrStack = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
             val card = FrameLayout(context).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -122,8 +127,8 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
                     FrameLayout.LayoutParams(context.dp(112), context.dp(112)),
                 )
             }
-            bottomStack.addView(card, LinearLayout.LayoutParams(WRAP, WRAP))
-            bottomStack.addView(
+            qrStack.addView(card, LinearLayout.LayoutParams(WRAP, WRAP))
+            qrStack.addView(
                 TextView(context).apply {
                     text = "QR 스캔 · 의견 보내기"
                     setTextColor(Palette.SILVER_DIM)
@@ -133,6 +138,12 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
                     gravity = Gravity.CENTER
                 },
                 LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = context.dp(6) },
+            )
+            addView(
+                qrStack,
+                LayoutParams(WRAP, WRAP, Gravity.END or Gravity.CENTER_VERTICAL).apply {
+                    marginEnd = context.dp(20)
+                },
             )
         }
 

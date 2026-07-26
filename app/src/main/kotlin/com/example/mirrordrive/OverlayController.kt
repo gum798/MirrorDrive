@@ -244,21 +244,30 @@ class OverlayController(context: Context) {
         animateSnap(lp, r, targetX, targetY, lp.width, lp.height)
     }
 
-    /** Current system-bar insets (status/nav) for the overlay as (left, top, right, bottom) px.
-     *  When the app behind is fullscreen and the bars are hidden these are ~0 so snapping targets
-     *  the true screen edge; when a bar shows we snap flush against it rather than under it. Zero
-     *  before the window is attached / insets are known. */
+    /** System-bar insets to snap against, as (left, top, right, bottom) px — but only for bars that
+     *  are **actually on screen**. The overlay is never itself fullscreen, so it reports a status-bar
+     *  inset even when the app behind is in immersive fullscreen and the bar is really gone; snapping
+     *  against that *phantom* inset left a status-bar-height gap at the top. So we gate the top inset
+     *  on [WindowInsets.isVisible] of the status bar (and the bottom on the nav bar): hidden bar →
+     *  inset 0 → snap flush to the true edge; shown bar → snap just below/above it. Zero before the
+     *  window is attached / insets are known. */
     private fun usableInsets(): Rect {
         val insets = root?.rootWindowInsets ?: return Rect(0, 0, 0, 0)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val i = insets.getInsets(WindowInsets.Type.systemBars())
-            Rect(i.left, i.top, i.right, i.bottom)
-        } else {
-            @Suppress("DEPRECATION")
+            val statusShown = insets.isVisible(WindowInsets.Type.statusBars())
+            val navShown = insets.isVisible(WindowInsets.Type.navigationBars())
             Rect(
-                insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
-                insets.systemWindowInsetRight, insets.systemWindowInsetBottom,
+                i.left,
+                if (statusShown) i.top else 0,
+                i.right,
+                if (navShown) i.bottom else 0,
             )
+        } else {
+            // API 29: no per-bar visibility query. Prefer a flush top (the reported problem is the
+            // phantom top gap over fullscreen apps) and keep the side/bottom insets.
+            @Suppress("DEPRECATION")
+            Rect(insets.systemWindowInsetLeft, 0, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
         }
     }
 
