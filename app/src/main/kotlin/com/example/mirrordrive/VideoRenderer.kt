@@ -34,9 +34,13 @@ class VideoRenderer(
     private val freeInputs = ArrayDeque<Int>()  // input buffer indices offered by the codec
     private var codec: MediaCodec? = null
     private var codecThread: HandlerThread? = null
-    private var surface: Surface? = null
+    @Volatile private var surface: Surface? = null
     @Volatile private var configured = false
     @Volatile private var released = false
+
+    // Best-effort diagnostic state for the on-screen HUD (test builds); never affects decoding.
+    @Volatile private var lastSetSurface = "-"
+    @Volatile private var lastError = "-"
 
     private var sps: ByteArray? = null
     private var pps: ByteArray? = null
@@ -52,18 +56,27 @@ class VideoRenderer(
      */
     fun setSurface(s: Surface) {
         synchronized(lock) {
-            if (released) return
+            if (released) { lastSetSurface = "skip:released"; return }
             surface = s
             val c = codec
             if (configured && c != null) {
                 try {
                     c.setOutputSurface(s)
+                    lastSetSurface = "swap:valid=${s.isValid}"
                 } catch (e: IllegalStateException) {
+                    lastSetSurface = "swapFAIL:${e.message}"
                     Log.w("MirrorDrive", "setOutputSurface failed: ${e.message}")
                 }
+            } else {
+                lastSetSurface = "record:cfg=$configured"
             }
         }
     }
+
+    /** One-line decoder state for the on-screen diagnostic (test builds). Best-effort, lock-free. */
+    fun debugLine(): String =
+        "cfg=${if (configured) 1 else 0} rel=${if (released) 1 else 0} " +
+            "surf=${if (surface?.isValid == true) 1 else 0} setS=$lastSetSurface err=$lastError"
 
     fun onAccessUnit(data: ByteArray, ptsUs: Long, isConfig: Boolean) {
         synchronized(lock) {
@@ -147,6 +160,7 @@ class VideoRenderer(
                 onVideoSize(w, h)
             }
             override fun onError(mc: MediaCodec, e: MediaCodec.CodecException) {
+                lastError = "code=${e.errorCode}"
                 Log.e("MirrorDrive", "MediaCodec error code=${e.errorCode} diag=${e.diagnosticInfo}", e)
             }
         }, handler)

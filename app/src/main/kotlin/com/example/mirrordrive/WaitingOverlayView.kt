@@ -33,6 +33,7 @@ import android.widget.TextView
 class WaitingOverlayView(context: Context) : FrameLayout(context) {
     private val ripple = RippleSignalView(context)
     private val deviceLine: TextView
+    private val debugText: TextView
     private var deviceInfoComplete = false
 
     private var fadeAnim: ValueAnimator? = null
@@ -180,6 +181,22 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
         }
         bottomStack.addView(feedback, LinearLayout.LayoutParams(WRAP, WRAP))
 
+        // Tiny diagnostic line (test builds): decoder/surface state, so a stuck waiting screen can
+        // be screenshotted and read. Invisible in normal use — if mirroring works this view is faded
+        // out before it matters. Set via setDebug(); empty by default.
+        debugText = TextView(context).apply {
+            setTextColor(Palette.SILVER_DIM)
+            typeface = Typeface.MONOSPACE
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+            alpha = 0.55f
+            letterSpacing = 0.0f
+            gravity = Gravity.CENTER
+        }
+        bottomStack.addView(
+            debugText,
+            LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = context.dp(10) },
+        )
+
         addView(
             bottomStack,
             LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
@@ -187,6 +204,9 @@ class WaitingOverlayView(context: Context) : FrameLayout(context) {
             },
         )
     }
+
+    /** Update the on-screen diagnostic line (test builds). No-op-safe to call every tick. */
+    fun setDebug(text: String) { debugText.text = text }
 
     /** Open the feedback form in the browser. NEW_TASK because the waiting view runs inside an
      *  activity/overlay; try/catch so a device with no browser fails quietly instead of crashing. */
