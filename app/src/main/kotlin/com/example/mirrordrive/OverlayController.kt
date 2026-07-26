@@ -62,8 +62,10 @@ class OverlayController(context: Context) {
     private val minSizePx = (appContext.resources.displayMetrics.density * 120).toInt()
 
     // How close (px) a window edge must be to a screen edge, on release, to be pulled flush to it —
-    // the "magnet" gauge. Drop the window further than this from every edge and it stays put.
-    private val snapThresholdPx = appContext.dp(40)
+    // the "magnet" gauge. Drop the window further than this from every edge and it stays put. Sized
+    // a little generously so a straight up/down flick to a mid-edge (not just a firm shove into a
+    // corner) still gets caught.
+    private val snapThresholdPx = appContext.dp(56)
 
     // Runs the short glide from where the window was released to its snapped resting position.
     private var snapAnim: ValueAnimator? = null
@@ -219,7 +221,12 @@ class OverlayController(context: Context) {
         val screen = screenSize()
         val ins = usableInsets()
         val minX = ins.left
-        val minY = ins.top
+        // Always snap the top flush to the physical top (0), not to the status-bar inset. On this
+        // cast box the overlay is reported a small residual top inset even when the bar is hidden
+        // over a fullscreen app, which left a visible float when snapping to the top-centre. Flush-
+        // to-0 matches the corner behaviour everywhere; the trade-off (top controls tucked under a
+        // *shown* status bar) is fine for this fullscreen-over-content use.
+        val minY = 0
         val maxX = maxOf(minX, screen.x - ins.right - lp.width)
         val maxY = maxOf(minY, screen.y - ins.bottom - lp.height)
 
