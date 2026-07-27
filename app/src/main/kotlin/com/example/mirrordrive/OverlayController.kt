@@ -84,11 +84,25 @@ class OverlayController(context: Context) {
         aspectW = if (videoW > 0) videoW else 9
         aspectH = if (videoH > 0) videoH else 16
 
-        // Initial size: fit the video aspect into ~60% of the screen's smaller edge.
+        // Initial geometry: restore the user's last window size + position if we saved one, else
+        // default to the video aspect fitted into ~60% of the screen's smaller edge near the
+        // top-start corner. Restoring is what makes fullscreen↔window and a fresh app launch bring
+        // the window back to where the user left it.
         val metrics = appContext.resources.displayMetrics
-        val box = (minOf(metrics.widthPixels, metrics.heightPixels) * 0.6).toInt()
+        val screen = screenSize()
+        val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val defaultBox = (minOf(metrics.widthPixels, metrics.heightPixels) * 0.6).toInt()
+        val savedBox = prefs.getInt(KEY_BOX, -1)
+        val box = (if (savedBox > 0) savedBox else defaultBox)
+            .coerceIn(minSizePx, maxOf(metrics.widthPixels, metrics.heightPixels))
         boxPx = box
+        // Re-fit the remembered size scale to the *current* video aspect (the phone may have rotated
+        // since we saved) so we never restore a distorted or stale width/height.
         val fit = fitInside(box, box, aspectW, aspectH)
+        val startX = prefs.getInt(KEY_X, (metrics.density * 16).toInt())
+            .coerceIn(0, maxOf(0, screen.x - fit.width))
+        val startY = prefs.getInt(KEY_Y, (metrics.density * 48).toInt())
+            .coerceIn(0, maxOf(0, screen.y - fit.height))
 
         val lp = WindowManager.LayoutParams(
             fit.width, fit.height,
@@ -103,8 +117,8 @@ class OverlayController(context: Context) {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = (metrics.density * 16).toInt()
-            y = (metrics.density * 48).toInt()
+            x = startX
+            y = startY
         }
 
         val container = FrameLayout(appContext).apply { setBackgroundColor(Color.BLACK) }
@@ -249,6 +263,7 @@ class OverlayController(context: Context) {
         }
 
         animateSnap(lp, r, targetX, targetY, lp.width, lp.height)
+        saveGeometry(targetX, targetY)   // remember the resting position for next time
     }
 
     /** System-bar insets to snap against, as (left, top, right, bottom) px — but only for bars that
@@ -278,6 +293,17 @@ class OverlayController(context: Context) {
         }
     }
 
+    /** Remember the window's size scale ([boxPx]) and position so the next [show] — whether that's
+     *  switching back from fullscreen or a fresh app launch — restores it. Called on each drag/resize
+     *  settle; survives process death via [android.content.SharedPreferences]. */
+    private fun saveGeometry(x: Int, y: Int) {
+        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_BOX, boxPx)
+            .putInt(KEY_X, x)
+            .putInt(KEY_Y, y)
+            .apply()
+    }
+
     /**
      * The resize magnet. Called when the resize grip is released: the grip drives the window's
      * bottom-right corner (top-left is anchored), so we snap that corner flush to the screen's
@@ -294,13 +320,14 @@ class OverlayController(context: Context) {
         val wByRight = (screen.x - ins.right) - lp.x                       // right edge flush
         val wByBottom = ((screen.y - ins.bottom - lp.y).toLong() * aspectW / aspectH).toInt()  // bottom flush
         val fitW = minOf(wByRight, wByBottom)                             // binding edge wins
-        if (fitW < minSizePx) return                                      // no sensible room to snap
-        if (lp.width < fitW - snapThresholdPx) return                     // corner not near an edge
-
-        val targetW = fitW
-        val targetH = (targetW.toLong() * aspectH / aspectW).toInt()
-        boxPx = maxOf(targetW, targetH)                                   // reference tracks snapped size
-        animateSnap(lp, r, lp.x, lp.y, targetW, targetH)
+        if (fitW >= minSizePx && lp.width >= fitW - snapThresholdPx) {    // corner near an edge → snap
+            val targetW = fitW
+            val targetH = (targetW.toLong() * aspectH / aspectW).toInt()
+            boxPx = maxOf(targetW, targetH)                              // reference tracks snapped size
+            animateSnap(lp, r, lp.x, lp.y, targetW, targetH)
+        }
+        // else: keep the user's dragged size (boxPx already tracks it from the resize move).
+        saveGeometry(lp.x, lp.y)   // remember the chosen size for next time
     }
 
     /** Glide the window from its current [WindowManager.LayoutParams] geometry to (tx, ty) position
@@ -398,5 +425,11 @@ class OverlayController(context: Context) {
 
     private companion object {
         const val WRAP = FrameLayout.LayoutParams.WRAP_CONTENT
+
+        // Persisted floating-window geometry: size scale (longer-edge px) + top-left position.
+        const val PREFS = "mirrordrive_overlay"
+        const val KEY_BOX = "win_box"
+        const val KEY_X = "win_x"
+        const val KEY_Y = "win_y"
     }
 }
